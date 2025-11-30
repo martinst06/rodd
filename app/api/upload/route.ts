@@ -36,9 +36,11 @@ export async function POST(req: NextRequest) {
     const keys: string[] = [];
 
     for (const file of allFiles) {
-      if (!file.type.startsWith("image/")) {
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      if (!isImage && !isVideo) {
         return NextResponse.json(
-          { error: "Only image uploads are allowed." },
+          { error: "Only image or video uploads are allowed." },
           { status: 400 }
         );
       }
@@ -48,7 +50,8 @@ export async function POST(req: NextRequest) {
 
       const safeName =
         file.name?.replace(/[^a-zA-Z0-9.\-_]/g, "_") || "image-upload";
-      const key = `images/${Date.now()}-${safeName}`;
+      const keyPrefix = isVideo ? "video" : "image";
+      const key = `images/${keyPrefix}-${Date.now()}-${safeName}`;
 
       await b2Client.send(
         new PutObjectCommand({

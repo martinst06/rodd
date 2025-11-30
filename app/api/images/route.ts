@@ -5,6 +5,21 @@ import { B2_BUCKET_NAME, b2Client } from "@/lib/b2";
 
 export const runtime = "nodejs";
 
+type MediaKind = "image" | "video";
+
+const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"];
+
+const detectKind = (key: string): MediaKind => {
+  const lower = key.toLowerCase();
+  if (lower.includes("/video-")) {
+    return "video";
+  }
+  if (VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+    return "video";
+  }
+  return "image";
+};
+
 export async function GET() {
   if (
     !B2_BUCKET_NAME ||
@@ -36,6 +51,7 @@ export async function GET() {
           lastModified: obj.LastModified
             ? obj.LastModified.toISOString()
             : null,
+          kind: detectKind(obj.Key as string),
         }))
         .sort((a, b) => {
           if (!a.lastModified || !b.lastModified) return 0;

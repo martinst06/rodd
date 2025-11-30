@@ -1,32 +1,26 @@
 "use client";
 
+import Image from "next/image";
 import type { ChangeEvent, FormEvent, SVGProps } from "react";
 import { useEffect, useId, useState } from "react";
 
 import { useLanguage } from "@/components/LanguageProvider";
 import type { ErrorKey } from "@/lib/i18n";
 
-type ImageItem = {
+type MediaKind = "image" | "video";
+
+type MediaItem = {
   key: string;
   size: number;
   lastModified: string | null;
+  kind: MediaKind;
 };
 
 type PendingImage = {
   id: string;
   file: File;
   previewUrl: string;
-};
-
-const formatFileSize = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "1 KB";
-  }
-  const megabytes = bytes / (1024 * 1024);
-  if (megabytes >= 1) {
-    return `${megabytes.toFixed(1)} MB`;
-  }
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  kind: MediaKind;
 };
 
 const UploadIcon = (props: SVGProps<SVGSVGElement>) => (
@@ -91,7 +85,7 @@ const TrashIcon = (props: SVGProps<SVGSVGElement>) => (
 export default function Home() {
   const { translation: t } = useLanguage();
   const fileInputId = useId();
-  const [images, setImages] = useState<ImageItem[]>([]);
+  const [images, setImages] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [errorKey, setErrorKey] = useState<ErrorKey | null>(null);
@@ -113,7 +107,13 @@ export default function Home() {
         throw new Error("Failed to load images.");
       }
       const data = await response.json();
-      setImages(data.images ?? []);
+      const received: MediaItem[] = (data.images ?? []).map(
+        (item: MediaItem) => ({
+          ...item,
+          kind: item.kind === "video" ? "video" : "image",
+        })
+      );
+      setImages(received);
     } catch (err: unknown) {
       console.error(err);
       setCustomError(null);
@@ -165,11 +165,13 @@ export default function Home() {
     }
 
     const next: PendingImage[] = [];
-    let hasNonImage = false;
+    let hasInvalidFile = false;
 
     for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        hasNonImage = true;
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      if (!isImage && !isVideo) {
+        hasInvalidFile = true;
         continue;
       }
 
@@ -178,12 +180,17 @@ export default function Home() {
         .toString(36)
         .slice(2, 8)}`;
 
-      next.push({ id, file, previewUrl });
+      next.push({
+        id,
+        file,
+        previewUrl,
+        kind: isVideo ? "video" : "image",
+      });
     }
 
-    if (hasNonImage) {
+    if (hasInvalidFile) {
       setCustomError(null);
-      setErrorKey("nonImage");
+      setErrorKey("invalidFile");
     }
 
     if (!next.length) {
@@ -285,6 +292,23 @@ export default function Home() {
     }
   };
 
+  const handleDownloadAll = () => {
+    if (!images.length) return;
+    for (const image of images) {
+      const encodedKey = image.key
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+      const link = document.createElement("a");
+      link.href = `/api/image/${encodedKey}`;
+      link.download = image.key.split("/").pop() ?? "image";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   return (
     <div className="w-full space-y-6">
       <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 shadow-lg sm:p-6">
@@ -302,7 +326,7 @@ export default function Home() {
               id={fileInputId}
               type="file"
               name="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
               onChange={handleFileChange}
               className="peer sr-only"
@@ -320,22 +344,26 @@ export default function Home() {
             </label>
           </div>
           <div className="flex flex-col items-stretch gap-2">
-            <button
-              type="submit"
-              disabled={uploading || pendingImages.length === 0}
-              className="inline-flex h-[52px] w-full items-center justify-center rounded-2xl bg-zinc-200 text-sm font-semibold text-black transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {uploading
-                ? t.uploadButton.uploading
-                : pendingImages.length > 0
-                ? t.uploadButton.ready(pendingImages.length)
-                : t.uploadButton.idle}
-            </button>
-            <p className="text-center text-[11px] text-zinc-500">
-              {pendingImages.length > 0
-                ? t.pendingStatus.ready(pendingImages.length)
-                : t.pendingStatus.none}
-            </p>
+            {pendingImages.length > 0 ? (
+              <>
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="inline-flex h-[52px] w-full items-center justify-center rounded-2xl bg-red-500 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploading
+                    ? t.uploadButton.uploading
+                    : t.uploadButton.ready(pendingImages.length)}
+                </button>
+                <p className="text-center text-[11px] text-zinc-500">
+                  {t.pendingStatus.ready(pendingImages.length)}
+                </p>
+              </>
+            ) : (
+              <p className="text-center text-sm text-zinc-500">
+                {t.pendingStatus.none}
+              </p>
+            )}
           </div>
         </form>
 
@@ -360,38 +388,46 @@ export default function Home() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {pendingImages.map((image) => (
+              {pendingImages.map((media) => (
                 <figure
-                  key={image.id}
+                  key={media.id}
                   className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/80"
                 >
-                  <div className="aspect-[4/3] w-full overflow-hidden bg-zinc-900">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={image.previewUrl}
-                      alt={image.file.name}
-                      className="h-full w-full object-cover"
-                    />
+                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-900">
+                    {media.kind === "video" ? (
+                      <video
+                        src={media.previewUrl}
+                        className="h-full w-full object-cover"
+                        playsInline
+                        muted
+                        loop
+                        autoPlay
+                      />
+                    ) : (
+                      <Image
+                        src={media.previewUrl}
+                        alt={media.file.name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        unoptimized
+                      />
+                    )}
                   </div>
-                  <figcaption className="absolute inset-x-0 bottom-0 space-y-1 bg-gradient-to-t from-black/85 via-black/30 to-transparent p-2 text-[10px] text-white">
-                    <p className="truncate text-[11px]" title={image.file.name}>
-                      {image.file.name}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-300">
-                        {formatFileSize(image.file.size)}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`${t.discardOne} ${image.file.name}`}
-                        onClick={() => removePendingImage(image.id)}
-                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-medium text-red-200 transition hover:bg-white/20"
-                      >
-                        <TrashIcon className="h-3 w-3" />
-                        {t.discardOne}
-                      </button>
-                    </div>
-                  </figcaption>
+                  {media.kind === "video" && (
+                    <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-zinc-100 shadow">
+                      ▶
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`${t.discardOne} ${media.file.name}`}
+                    onClick={() => removePendingImage(media.id)}
+                    className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-red-200 shadow-lg transition hover:bg-black/80"
+                  >
+                    <TrashIcon className="h-3 w-3" />
+                    {t.discardOne}
+                  </button>
                 </figure>
               ))}
             </div>
@@ -408,65 +444,82 @@ export default function Home() {
         {!loading && images.length === 0 ? (
           <p className="text-sm text-zinc-500">{t.empty}</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-            {images.map((image) => {
-              const encodedKey = image.key
-                .split("/")
-                .map((segment) => encodeURIComponent(segment))
-                .join("/");
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+              {images.map((image) => {
+                const encodedKey = image.key
+                  .split("/")
+                  .map((segment) => encodeURIComponent(segment))
+                  .join("/");
 
-              return (
-                <article
-                  key={image.key}
-                  className="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/70"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-zinc-900">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/image/${encodedKey}`}
-                      alt={image.key}
-                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <div className="min-w-0">
-                      <p
-                        className="truncate text-xs text-zinc-300"
-                        title={image.key}
-                      >
-                        {image.key.replace(/^images\//, "")}
-                      </p>
-                      {image.lastModified && (
-                        <p className="mt-0.5 text-[10px] text-zinc-500">
-                          {new Date(image.lastModified).toLocaleString(t.locale)}
-                        </p>
+                const isVideo = image.kind === "video";
+
+                return (
+                  <article
+                    key={image.key}
+                    className="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/70"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden bg-zinc-900">
+                      {isVideo ? (
+                        <video
+                          src={`/api/image/${encodedKey}`}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
+                        />
+                      ) : (
+                        <Image
+                          src={`/api/image/${encodedKey}`}
+                          alt={image.key}
+                          fill
+                          className="object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          unoptimized
+                        />
                       )}
+                      {isVideo && (
+                        <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-zinc-100 shadow">
+                          ▶
+                        </span>
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-2">
+                        <a
+                          href={`/api/image/${encodedKey}`}
+                          download
+                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800"
+                          aria-label={`${t.download} ${image.key}`}
+                        >
+                          <DownloadIcon className="h-3.5 w-3.5" />
+                          {t.download}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(image.key)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
+                          aria-label={`${t.delete} ${image.key}`}
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                          {t.delete}
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`/api/image/${encodedKey}`}
-                        download
-                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800"
-                        aria-label={`${t.download} ${image.key}`}
-                      >
-                        <DownloadIcon className="h-3.5 w-3.5" />
-                        {t.download}
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(image.key)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
-                        aria-label={`${t.delete} ${image.key}`}
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                        {t.delete}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={handleDownloadAll}
+                disabled={loading || images.length === 0}
+                className="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <DownloadIcon className="h-4 w-4" />
+                {t.downloadAll}
+              </button>
+            </div>
+          </>
         )}
       </section>
     </div>

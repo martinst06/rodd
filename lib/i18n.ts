@@ -33,6 +33,7 @@ export type Translation = {
   loading: string;
   empty: string;
   download: string;
+  downloadAll: string;
   delete: string;
   confirmDelete: string;
   errors: {
@@ -42,7 +43,7 @@ export type Translation = {
     uploadConfig: string;
     deleteFailed: string;
     deleteGeneric: string;
-    nonImage: string;
+    invalidFile: string;
   };
 };
 
@@ -74,6 +75,7 @@ export const translations: Record<Language, Translation> = {
     loading: "Се вчитуваат фотографии…",
     empty: "Сè уште нема фотографии. Прикачете за да започнете.",
     download: "Преземи",
+    downloadAll: "Преземи ги сите",
     delete: "Избриши",
     confirmDelete:
       "Да ја избришам ли оваа фотографија од заедничката галерија?",
@@ -85,7 +87,8 @@ export const translations: Record<Language, Translation> = {
       uploadConfig: "Прикачувањето не успеа. Проверете ја конфигурацијата.",
       deleteFailed: "Бришењето не успеа. Обидете се повторно.",
       deleteGeneric: "Бришењето не успеа. Обидете се подоцна.",
-      nonImage: "Некои избрани датотеки не беа фотографии и беа игнорирани.",
+      invalidFile:
+        "Некои избрани датотеки не беа поддржани и беа игнорирани.",
     },
   },
   de: {
@@ -111,6 +114,7 @@ export const translations: Record<Language, Translation> = {
     loading: "Fotos werden geladen…",
     empty: "Noch keine Fotos. Lade eines hoch, um zu starten.",
     download: "Herunterladen",
+    downloadAll: "Alle herunterladen",
     delete: "Löschen",
     confirmDelete:
       "Dieses Foto für alle aus dem geteilten Speicher löschen?",
@@ -125,8 +129,8 @@ export const translations: Record<Language, Translation> = {
       deleteFailed: "Löschen fehlgeschlagen. Bitte versuche es erneut.",
       deleteGeneric:
         "Löschen fehlgeschlagen. Bitte später erneut versuchen.",
-      nonImage:
-        "Einige ausgewählte Dateien waren keine Bilder und wurden ignoriert.",
+      invalidFile:
+        "Einige ausgewählte Dateien wurden nicht unterstützt und ignoriert.",
     },
   },
   en: {
@@ -152,6 +156,7 @@ export const translations: Record<Language, Translation> = {
     loading: "Loading pictures…",
     empty: "No pictures yet. Upload one to get started.",
     download: "Download",
+    downloadAll: "Download all",
     delete: "Delete",
     confirmDelete:
       "Delete this picture from the shared bucket for everyone?",
@@ -164,7 +169,7 @@ export const translations: Record<Language, Translation> = {
         "Upload failed. Please check your configuration.",
       deleteFailed: "Delete failed. Please try again.",
       deleteGeneric: "Delete failed. Please try again in a moment.",
-      nonImage: "Some selected files were not images and were ignored.",
+      invalidFile: "Some selected files were not supported and were ignored.",
     },
   },
 };
