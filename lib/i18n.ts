@@ -36,6 +36,7 @@ export type Translation = {
   downloadAll: string;
   delete: string;
   confirmDelete: string;
+  previewClose: string;
   errors: {
     loadImages: string;
     uploadSelection: string;
@@ -79,6 +80,7 @@ export const translations: Record<Language, Translation> = {
     delete: "Избриши",
     confirmDelete:
       "Да ја избришам ли оваа фотографија од заедничката галерија?",
+    previewClose: "Назад",
     errors: {
       loadImages: "Галеријата не може да се вчита. Обидете се повторно.",
       uploadSelection:
@@ -118,6 +120,7 @@ export const translations: Record<Language, Translation> = {
     delete: "Löschen",
     confirmDelete:
       "Dieses Foto für alle aus dem geteilten Speicher löschen?",
+    previewClose: "Zurück",
     errors: {
       loadImages:
         "Bilder konnten nicht geladen werden. Bitte versuche es erneut.",
@@ -160,6 +163,7 @@ export const translations: Record<Language, Translation> = {
     delete: "Delete",
     confirmDelete:
       "Delete this picture from the shared bucket for everyone?",
+    previewClose: "Go back",
     errors: {
       loadImages: "Failed to load images. Please try again.",
       uploadSelection:

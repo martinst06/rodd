@@ -91,6 +91,7 @@ export default function Home() {
   const [errorKey, setErrorKey] = useState<ErrorKey | null>(null);
   const [customError, setCustomError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
 
   const resolvedError = customError ?? (errorKey ? t.errors[errorKey] : null);
 
@@ -251,6 +252,26 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewMedia(null);
+      }
+    };
+    if (previewMedia) {
+      window.addEventListener("keydown", onKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [previewMedia]);
+
+  const encodeKey = (key: string) =>
+    key
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+
   const handleDelete = async (imageKey: string) => {
     clearErrorState();
 
@@ -258,10 +279,7 @@ export default function Home() {
     if (!confirmed) return;
 
     try {
-      const encodedKey = imageKey
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
+      const encodedKey = encodeKey(imageKey);
 
       const response = await fetch(`/api/image/${encodedKey}`, {
         method: "DELETE",
@@ -295,10 +313,7 @@ export default function Home() {
   const handleDownloadAll = () => {
     if (!images.length) return;
     for (const image of images) {
-      const encodedKey = image.key
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
+      const encodedKey = encodeKey(image.key);
       const link = document.createElement("a");
       link.href = `/api/image/${encodedKey}`;
       link.download = image.key.split("/").pop() ?? "image";
@@ -447,10 +462,7 @@ export default function Home() {
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               {images.map((image) => {
-                const encodedKey = image.key
-                  .split("/")
-                  .map((segment) => encodeURIComponent(segment))
-                  .join("/");
+                const encodedKey = encodeKey(image.key);
 
                 const isVideo = image.kind === "video";
 
@@ -459,13 +471,18 @@ export default function Home() {
                     key={image.key}
                     className="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/70"
                   >
-                    <div className="relative aspect-[4/3] overflow-hidden bg-zinc-900">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMedia(image)}
+                      className="group relative aspect-[4/3] w-full overflow-hidden bg-zinc-900 focus:outline-none"
+                    >
                       {isVideo ? (
                         <video
                           src={`/api/image/${encodedKey}`}
-                          controls
                           playsInline
                           preload="metadata"
+                          muted
+                          loop
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
                         />
                       ) : (
@@ -483,26 +500,26 @@ export default function Home() {
                           ▶
                         </span>
                       )}
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-2">
-                        <a
-                          href={`/api/image/${encodedKey}`}
-                          download
-                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800"
-                          aria-label={`${t.download} ${image.key}`}
-                        >
-                          <DownloadIcon className="h-3.5 w-3.5" />
-                          {t.download}
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(image.key)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
-                          aria-label={`${t.delete} ${image.key}`}
-                        >
-                          <TrashIcon className="h-3.5 w-3.5" />
-                          {t.delete}
-                        </button>
-                      </div>
+                    </button>
+                    <div className="flex items-center justify-end gap-2 border-t border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                      <a
+                        href={`/api/image/${encodedKey}`}
+                        download
+                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800"
+                        aria-label={`${t.download} ${image.key}`}
+                      >
+                        <DownloadIcon className="h-3.5 w-3.5" />
+                        {t.download}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(image.key)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
+                        aria-label={`${t.delete} ${image.key}`}
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                        {t.delete}
+                      </button>
                     </div>
                   </article>
                 );
@@ -522,6 +539,51 @@ export default function Home() {
           </>
         )}
       </section>
+
+      {previewMedia && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setPreviewMedia(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-zinc-800 bg-black/70 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewMedia(null)}
+              className="absolute right-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-zinc-600 bg-black/70 px-3 py-1.5 text-sm font-semibold text-zinc-100 transition hover:bg-black/90"
+            >
+              {t.previewClose}
+            </button>
+            <div className="relative h-full w-full">
+              {previewMedia.kind === "video" ? (
+                <video
+                  src={`/api/image/${encodeKey(previewMedia.key)}`}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="max-h-[75vh] w-full rounded-3xl object-contain"
+                />
+              ) : (
+                <div className="relative mx-auto h-[75vh] w-full">
+                  <Image
+                    src={`/api/image/${encodeKey(previewMedia.key)}`}
+                    alt={previewMedia.key}
+                    fill
+                    className="object-contain"
+                    sizes="100vw"
+                    unoptimized
+                    priority
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
