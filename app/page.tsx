@@ -23,6 +23,13 @@ type PendingImage = {
   kind: MediaKind;
 };
 
+type UploadedPart = {
+  PartNumber: number;
+  ETag: string;
+};
+
+const PART_SIZE = 8 * 1024 * 1024; // 8MB chunks keep B2 happy
+
 const UploadIcon = (props: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
     <path
@@ -94,6 +101,98 @@ export default function Home() {
   const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
 
   const resolvedError = customError ?? (errorKey ? t.errors[errorKey] : null);
+
+  const postJson = async <T,>(
+    path: string,
+    payload: Record<string, unknown>
+  ): Promise<T> => {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await response.json().catch(() => null)) as T | null;
+    if (!response.ok) {
+      const message =
+        data && typeof data === "object" && data !== null && "error" in data
+          ? ((data as Record<string, string>).error ?? "Request failed.")
+          : "Request failed.";
+      throw new Error(message);
+    }
+    if (data === null) {
+      throw new Error("Unexpected empty response from server.");
+    }
+    return data;
+  };
+
+  const uploadMediaFile = async (media: PendingImage) => {
+    const { uploadId, key } = await postJson<{
+      uploadId: string;
+      key: string;
+    }>("/api/upload/start", {
+      fileName: media.file.name,
+      contentType: media.file.type,
+    });
+
+    const parts: UploadedPart[] = [];
+    let partNumber = 1;
+
+    try {
+      for (
+        let offset = 0;
+        offset < media.file.size;
+        offset += PART_SIZE, partNumber++
+      ) {
+        const chunk = media.file.slice(
+          offset,
+          Math.min(offset + PART_SIZE, media.file.size)
+        );
+
+        const { url } = await postJson<{ url: string }>("/api/upload/url", {
+          key,
+          uploadId,
+          partNumber,
+        });
+
+        const uploadResponse = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": media.file.type,
+          },
+          body: chunk,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(
+            `Failed to upload part ${partNumber} (${uploadResponse.status}).`
+          );
+        }
+
+        const etag = uploadResponse.headers.get("ETag");
+        if (!etag) {
+          throw new Error("Upload failed: missing ETag header.");
+        }
+
+        parts.push({
+          PartNumber: partNumber,
+          ETag: etag.replace(/"/g, ""),
+        });
+      }
+
+      await postJson<{ success: boolean }>("/api/upload/complete", {
+        key,
+        uploadId,
+        parts,
+      });
+    } catch (error) {
+      await postJson<{ success: boolean }>("/api/upload/abort", {
+        key,
+        uploadId,
+      }).catch(() => undefined);
+      throw error;
+    }
+  };
 
   const clearErrorState = () => {
     setErrorKey(null);
@@ -211,30 +310,11 @@ export default function Home() {
       return;
     }
 
-    const formData = new FormData();
-    for (const image of pendingImages) {
-      formData.append("file", image.file);
-    }
-
     try {
       setUploading(true);
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        if (body?.error) {
-          setCustomError(body.error);
-          setErrorKey(null);
-        } else {
-          setCustomError(null);
-          setErrorKey("uploadConfig");
-        }
-        return;
+      for (const media of pendingImages) {
+        await uploadMediaFile(media);
       }
-
       form.reset();
       clearPendingImages();
       await loadImages();
