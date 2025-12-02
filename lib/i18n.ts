@@ -32,6 +32,7 @@ export type Translation = {
   galleryTitle: string;
   loading: string;
   empty: string;
+  downloadBlockedNotice: string;
   download: string;
   downloadAll: string;
   delete: string;
@@ -75,6 +76,8 @@ export const translations: Record<Language, Translation> = {
     galleryTitle: "Галерија",
     loading: "Се вчитуваат фотографии…",
     empty: "Сè уште нема фотографии. Прикачете за да започнете.",
+    downloadBlockedNotice:
+      "Преземањата се привремено стопирани. Обидете се повторно подоцна.",
     download: "Преземи",
     downloadAll: "Преземи ги сите",
     delete: "Избриши",
@@ -115,6 +118,8 @@ export const translations: Record<Language, Translation> = {
     galleryTitle: "Galerie",
     loading: "Fotos werden geladen…",
     empty: "Noch keine Fotos. Lade eines hoch, um zu starten.",
+    downloadBlockedNotice:
+      "Downloads sind vorübergehend pausiert. Bitte versuche es später erneut.",
     download: "Herunterladen",
     downloadAll: "Alle herunterladen",
     delete: "Löschen",
@@ -158,6 +163,8 @@ export const translations: Record<Language, Translation> = {
     galleryTitle: "Gallery",
     loading: "Loading pictures…",
     empty: "No pictures yet. Upload one to get started.",
+    downloadBlockedNotice:
+      "Downloads are temporarily paused. Please try again shortly.",
     download: "Download",
     downloadAll: "Download all",
     delete: "Delete",

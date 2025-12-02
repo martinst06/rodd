@@ -1,4 +1,4 @@
-import { ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 
 import { B2_BUCKET_NAME, b2Client } from "@/lib/b2";
@@ -18,6 +18,23 @@ const detectKind = (key: string): MediaKind => {
     return "video";
   }
   return "image";
+};
+
+const isDownloadCapError = (error: unknown) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "Code" in error &&
+    (error as { Code?: string }).Code === "AccessDenied"
+  ) {
+    const message = String((error as { message?: unknown }).message ?? "").toLowerCase();
+    return (
+      message.includes("download bandwidth") ||
+      message.includes("class b") ||
+      message.includes("cap exceeded")
+    );
+  }
+  return false;
 };
 
 export async function GET() {
@@ -58,7 +75,27 @@ export async function GET() {
           return a.lastModified < b.lastModified ? 1 : -1;
         }) ?? [];
 
-    return NextResponse.json({ images });
+    let downloadBlocked = false;
+    const firstKey = images[0]?.key;
+
+    if (firstKey) {
+      try {
+        await b2Client.send(
+          new HeadObjectCommand({
+            Bucket: B2_BUCKET_NAME,
+            Key: firstKey,
+          })
+        );
+      } catch (error) {
+        if (isDownloadCapError(error)) {
+          downloadBlocked = true;
+        } else {
+          console.error("B2 probe error:", error);
+        }
+      }
+    }
+
+    return NextResponse.json({ images, downloadBlocked });
   } catch (error) {
     console.error("List images error:", error);
     return NextResponse.json(

@@ -1,7 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import type { ChangeEvent, FormEvent, SVGProps } from "react";
+import type {
+  ChangeEvent,
+  ComponentProps,
+  FormEvent,
+  SVGProps,
+  SyntheticEvent,
+} from "react";
 import { useEffect, useId, useState } from "react";
 
 import { useLanguage } from "@/components/LanguageProvider";
@@ -89,6 +95,72 @@ const TrashIcon = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+type VideoWithSpinnerProps = ComponentProps<"video"> & {
+  wrapperClassName?: string;
+  spinnerSize?: "sm" | "md" | "lg";
+};
+
+const spinnerSizeClasses: Record<
+  NonNullable<VideoWithSpinnerProps["spinnerSize"]>,
+  string
+> = {
+  sm: "h-6 w-6 border",
+  md: "h-9 w-9 border-[3px]",
+  lg: "h-12 w-12 border-[3px]",
+};
+
+const VideoWithSpinner = ({
+  wrapperClassName = "",
+  spinnerSize = "md",
+  className = "",
+  onLoadedData,
+  onLoadedMetadata,
+  onWaiting,
+  onPlaying,
+  onError,
+  ...rest
+}: VideoWithSpinnerProps) => {
+  const [isBuffering, setIsBuffering] = useState(true);
+
+  const stopBuffering = (
+    event: SyntheticEvent<HTMLVideoElement>,
+    callback?: (event: SyntheticEvent<HTMLVideoElement>) => void
+  ) => {
+    setIsBuffering(false);
+    callback?.(event);
+  };
+
+  const startBuffering = (
+    event: SyntheticEvent<HTMLVideoElement>,
+    callback?: (event: SyntheticEvent<HTMLVideoElement>) => void
+  ) => {
+    setIsBuffering(true);
+    callback?.(event);
+  };
+
+  return (
+    <div className={`relative ${wrapperClassName}`} aria-busy={isBuffering}>
+      {isBuffering && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35">
+          <span
+            className={`inline-flex animate-spin rounded-full border-zinc-400 border-t-transparent ${spinnerSizeClasses[spinnerSize]}`}
+            aria-hidden="true"
+          />
+        </div>
+      )}
+      <video
+        {...rest}
+        className={`block ${className}`}
+        onLoadedData={(event) => stopBuffering(event, onLoadedData)}
+        onLoadedMetadata={(event) => stopBuffering(event, onLoadedMetadata)}
+        onPlaying={(event) => stopBuffering(event, onPlaying)}
+        onWaiting={(event) => startBuffering(event, onWaiting)}
+        onError={(event) => stopBuffering(event, onError)}
+      />
+    </div>
+  );
+};
+
 export default function Home() {
   const { translation: t } = useLanguage();
   const fileInputId = useId();
@@ -99,6 +171,7 @@ export default function Home() {
   const [customError, setCustomError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
+  const [downloadBlocked, setDownloadBlocked] = useState(false);
 
   const resolvedError = customError ?? (errorKey ? t.errors[errorKey] : null);
 
@@ -213,9 +286,12 @@ export default function Home() {
           kind: item.kind === "video" ? "video" : "image",
         })
       );
+      const downloadCapExceeded = Boolean(data.downloadBlocked);
       setImages(received);
+      setDownloadBlocked(downloadCapExceeded);
     } catch (err: unknown) {
       console.error(err);
+      setDownloadBlocked(false);
       setCustomError(null);
       setErrorKey("loadImages");
     } finally {
@@ -352,43 +428,6 @@ export default function Home() {
       .map((segment) => encodeURIComponent(segment))
       .join("/");
 
-  const handleDelete = async (imageKey: string) => {
-    clearErrorState();
-
-    const confirmed = window.confirm(t.confirmDelete);
-    if (!confirmed) return;
-
-    try {
-      const encodedKey = encodeKey(imageKey);
-
-      const response = await fetch(`/api/image/${encodedKey}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        if (body?.error) {
-          setCustomError(body.error);
-          setErrorKey(null);
-        } else {
-          setCustomError(null);
-          setErrorKey("deleteGeneric");
-        }
-        return;
-      }
-
-      await loadImages();
-    } catch (err: unknown) {
-      console.error(err);
-      if (err instanceof Error && err.message) {
-        setCustomError(err.message);
-        setErrorKey(null);
-      } else {
-        setCustomError(null);
-        setErrorKey("deleteFailed");
-      }
-    }
-  };
 
   const handleDownloadAll = () => {
     if (!images.length) return;
@@ -490,13 +529,15 @@ export default function Home() {
                 >
                   <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-900">
                     {media.kind === "video" ? (
-                      <video
-                        src={media.previewUrl}
+                      <VideoWithSpinner
+                        wrapperClassName="h-full w-full"
                         className="h-full w-full object-cover"
+                        src={media.previewUrl}
                         playsInline
                         muted
                         loop
                         autoPlay
+                        spinnerSize="sm"
                       />
                     ) : (
                       <Image
@@ -535,6 +576,11 @@ export default function Home() {
           <h2 className="text-sm font-medium text-zinc-200">{t.galleryTitle}</h2>
           {loading && <span className="text-xs text-zinc-500">{t.loading}</span>}
         </div>
+        {downloadBlocked && (
+          <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            {t.downloadBlockedNotice}
+          </div>
+        )}
 
         {!loading && images.length === 0 ? (
           <p className="text-sm text-zinc-500">{t.empty}</p>
@@ -557,13 +603,14 @@ export default function Home() {
                       className="group relative aspect-[4/3] w-full overflow-hidden bg-zinc-900 focus:outline-none"
                     >
                       {isVideo ? (
-                        <video
+                        <VideoWithSpinner
+                          wrapperClassName="h-full w-full"
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
                           src={`/api/image/${encodedKey}`}
                           playsInline
                           preload="metadata"
                           muted
                           loop
-                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
                         />
                       ) : (
                         <Image
@@ -585,21 +632,16 @@ export default function Home() {
                       <a
                         href={`/api/image/${encodedKey}`}
                         download
-                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800"
+                        className={`inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[11px] font-medium text-zinc-100 transition hover:bg-zinc-800 ${
+                          downloadBlocked ? "pointer-events-none opacity-40" : ""
+                        }`}
                         aria-label={`${t.download} ${image.key}`}
+                        aria-disabled={downloadBlocked}
+                        tabIndex={downloadBlocked ? -1 : undefined}
                       >
                         <DownloadIcon className="h-3.5 w-3.5" />
                         {t.download}
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(image.key)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
-                        aria-label={`${t.delete} ${image.key}`}
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                        {t.delete}
-                      </button>
                     </div>
                   </article>
                 );
@@ -609,7 +651,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleDownloadAll}
-                disabled={loading || images.length === 0}
+                disabled={loading || images.length === 0 || downloadBlocked}
                 className="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <DownloadIcon className="h-4 w-4" />
@@ -640,12 +682,14 @@ export default function Home() {
             </button>
             <div className="relative h-full w-full">
               {previewMedia.kind === "video" ? (
-                <video
+                <VideoWithSpinner
+                  wrapperClassName="max-h-[75vh] w-full rounded-3xl overflow-hidden"
+                  className="max-h-[75vh] w-full object-contain"
                   src={`/api/image/${encodeKey(previewMedia.key)}`}
                   controls
                   autoPlay
                   playsInline
-                  className="max-h-[75vh] w-full rounded-3xl object-contain"
+                  spinnerSize="lg"
                 />
               ) : (
                 <div className="relative mx-auto h-[75vh] w-full">
